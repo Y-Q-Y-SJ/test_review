@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server/index.js",
     "parse": "node scripts/parse.js",
-    "import": "node scripts/import.js"
+    "import": "node scripts/import.js",
+    "sync": "node scripts/sync_data.js"
   },
   "keywords": [],
   "author": "",
@@ -14,5 +15,8 @@
   "type": "commonjs",
   "dependencies": {
     "express": "^4.22.1"
+  },
+  "devDependencies": {
+    "ssh2": "^1.17.0"
   }
 }

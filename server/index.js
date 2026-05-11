@@ -10,11 +10,13 @@ const DATA_DIR = path.join(ROOT, 'data');
 const USERS_DIR = path.join(DATA_DIR, 'users');
 const QUESTIONS_FILE = path.join(DATA_DIR, 'questions.json');
 
-// Ensure directories exist
 if (!fs.existsSync(USERS_DIR)) fs.mkdirSync(USERS_DIR, { recursive: true });
 
 app.use(express.json());
 app.use(express.static(path.join(ROOT, 'public')));
+
+// Cache questions at startup
+const questions = JSON.parse(fs.readFileSync(QUESTIONS_FILE, 'utf-8'));
 
 // ===== Helpers =====
 function codeToHash(code) {
@@ -46,7 +48,39 @@ function getCode(req) {
   try { return decodeURIComponent(req.headers['x-code'] || ''); } catch { return req.headers['x-code'] || ''; }
 }
 
-// ===== API Routes =====
+// ===== Auth middleware =====
+function requireAuth(req, res, next) {
+  req.userCode = getCode(req);
+  if (!req.userCode) return res.status(401).json({ error: '未登录' });
+  next();
+}
+
+// Generic id-set route factory
+function idSetRoutes(getPath, dataKey, countKey) {
+  app.get(getPath, requireAuth, (req, res) => {
+    const data = readUserData(req.userCode);
+    res.json({ [dataKey]: data[dataKey] || [] });
+  });
+  app.post(getPath, requireAuth, (req, res) => {
+    const { add = [], remove = [] } = req.body;
+    const data = readUserData(req.userCode);
+    if (!data[dataKey]) data[dataKey] = [];
+    const set = new Set(data[dataKey]);
+    for (const id of add) set.add(id);
+    for (const id of remove) set.delete(id);
+    data[dataKey] = [...set];
+    writeUserData(req.userCode, data);
+    res.json({ ok: true, [countKey]: data[dataKey].length });
+  });
+  app.delete(getPath, requireAuth, (req, res) => {
+    const data = readUserData(req.userCode);
+    data[dataKey] = [];
+    writeUserData(req.userCode, data);
+    res.json({ ok: true, [countKey]: 0 });
+  });
+}
+
+// ===== Routes =====
 
 app.post('/api/login', (req, res) => {
   const { code } = req.body;
@@ -55,73 +89,43 @@ app.post('/api/login', (req, res) => {
   }
   const trimmed = code.trim();
   const data = readUserData(trimmed);
-  const questions = JSON.parse(fs.readFileSync(QUESTIONS_FILE, 'utf-8'));
-  res.json({
-    ok: true,
-    code: trimmed,
-    totalQuestions: questions.length,
-    wrongCount: data.wrongIds.length
-  });
+  res.json({ ok: true, code: trimmed, totalQuestions: questions.length, wrongCount: data.wrongIds.length });
 });
 
-app.get('/api/questions', (req, res) => {
-  const code = getCode(req);
-  if (!code) return res.status(401).json({ error: '未登录' });
-  const questions = JSON.parse(fs.readFileSync(QUESTIONS_FILE, 'utf-8'));
+app.get('/api/questions', requireAuth, (req, res) => {
   res.json(questions);
 });
 
-app.get('/api/wrong', (req, res) => {
-  const code = getCode(req);
-  if (!code) return res.status(401).json({ error: '未登录' });
-  const data = readUserData(code);
-  res.json({ wrongIds: data.wrongIds });
-});
+idSetRoutes('/api/wrong', 'wrongIds', 'wrongCount');
+idSetRoutes('/api/star', 'starIds', 'starCount');
+idSetRoutes('/api/fill-wrong', 'fillWrongIds', 'fillWrongCount');
 
-app.post('/api/wrong', (req, res) => {
-  const code = getCode(req);
-  if (!code) return res.status(401).json({ error: '未登录' });
-  const { add = [], remove = [] } = req.body;
-  const data = readUserData(code);
-  const set = new Set(data.wrongIds);
-  for (const id of add) set.add(id);
-  for (const id of remove) set.delete(id);
-  data.wrongIds = [...set];
-  writeUserData(code, data);
-  res.json({ ok: true, wrongCount: data.wrongIds.length });
-});
-
-app.delete('/api/wrong', (req, res) => {
-  const code = getCode(req);
-  if (!code) return res.status(401).json({ error: '未登录' });
-  const data = readUserData(code);
-  data.wrongIds = [];
-  writeUserData(code, data);
-  res.json({ ok: true, wrongCount: 0 });
-});
-
-app.get('/api/progress', (req, res) => {
-  const code = getCode(req);
-  if (!code) return res.status(401).json({ error: '未登录' });
-  const data = readUserData(code);
+app.get('/api/progress', requireAuth, (req, res) => {
+  const data = readUserData(req.userCode);
   res.json({ seqIndex: data.seqIndex || 0 });
 });
 
-app.post('/api/progress', (req, res) => {
-  const code = getCode(req);
-  if (!code) return res.status(401).json({ error: '未登录' });
-  const { seqIndex } = req.body;
-  const data = readUserData(code);
-  data.seqIndex = seqIndex;
-  writeUserData(code, data);
+app.post('/api/progress', requireAuth, (req, res) => {
+  const data = readUserData(req.userCode);
+  data.seqIndex = req.body.seqIndex;
+  writeUserData(req.userCode, data);
   res.json({ ok: true });
 });
 
-app.get('/api/stats', (req, res) => {
-  const code = getCode(req);
-  if (!code) return res.status(401).json({ error: '未登录' });
-  const questions = JSON.parse(fs.readFileSync(QUESTIONS_FILE, 'utf-8'));
-  const data = readUserData(code);
+app.get('/api/fill-progress', requireAuth, (req, res) => {
+  const data = readUserData(req.userCode);
+  res.json({ fillIndex: data.fillIndex || 0 });
+});
+
+app.post('/api/fill-progress', requireAuth, (req, res) => {
+  const data = readUserData(req.userCode);
+  data.fillIndex = req.body.fillIndex;
+  writeUserData(req.userCode, data);
+  res.json({ ok: true });
+});
+
+app.get('/api/stats', requireAuth, (req, res) => {
+  const data = readUserData(req.userCode);
   const typeCounts = {};
   questions.forEach(q => { typeCounts[q.type] = (typeCounts[q.type] || 0) + 1; });
   res.json({
@@ -132,85 +136,11 @@ app.get('/api/stats', (req, res) => {
   });
 });
 
-// ===== Star APIs =====
-app.get('/api/star', (req, res) => {
-  const code = getCode(req);
-  if (!code) return res.status(401).json({ error: '未登录' });
-  const data = readUserData(code);
-  res.json({ starIds: data.starIds || [] });
-});
-
-app.post('/api/star', (req, res) => {
-  const code = getCode(req);
-  if (!code) return res.status(401).json({ error: '未登录' });
-  const { add = [], remove = [] } = req.body;
-  const data = readUserData(code);
-  if (!data.starIds) data.starIds = [];
-  const set = new Set(data.starIds);
-  for (const id of add) set.add(id);
-  for (const id of remove) set.delete(id);
-  data.starIds = [...set];
-  writeUserData(code, data);
-  res.json({ ok: true, starCount: data.starIds.length });
-});
-
-// ===== Fill Wrong APIs =====
-app.get('/api/fill-wrong', (req, res) => {
-  const code = getCode(req);
-  if (!code) return res.status(401).json({ error: '未登录' });
-  const data = readUserData(code);
-  res.json({ fillWrongIds: data.fillWrongIds || [] });
-});
-
-app.post('/api/fill-wrong', (req, res) => {
-  const code = getCode(req);
-  if (!code) return res.status(401).json({ error: '未登录' });
-  const { add = [], remove = [] } = req.body;
-  const data = readUserData(code);
-  if (!data.fillWrongIds) data.fillWrongIds = [];
-  const set = new Set(data.fillWrongIds);
-  for (const id of add) set.add(id);
-  for (const id of remove) set.delete(id);
-  data.fillWrongIds = [...set];
-  writeUserData(code, data);
-  res.json({ ok: true, fillWrongCount: data.fillWrongIds.length });
-});
-
-app.delete('/api/fill-wrong', (req, res) => {
-  const code = getCode(req);
-  if (!code) return res.status(401).json({ error: '未登录' });
-  const data = readUserData(code);
-  data.fillWrongIds = [];
-  writeUserData(code, data);
-  res.json({ ok: true, fillWrongCount: 0 });
-});
-
-// ===== Fill Progress APIs =====
-app.get('/api/fill-progress', (req, res) => {
-  const code = getCode(req);
-  if (!code) return res.status(401).json({ error: '未登录' });
-  const data = readUserData(code);
-  res.json({ fillIndex: data.fillIndex || 0 });
-});
-
-app.post('/api/fill-progress', (req, res) => {
-  const code = getCode(req);
-  if (!code) return res.status(401).json({ error: '未登录' });
-  const { fillIndex } = req.body;
-  const data = readUserData(code);
-  data.fillIndex = fillIndex;
-  writeUserData(code, data);
-  res.json({ ok: true });
-});
-
-// Fallback
 app.get('*', (req, res) => {
   res.sendFile(path.join(ROOT, 'public', 'index.html'));
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  const questions = JSON.parse(fs.readFileSync(QUESTIONS_FILE, 'utf-8'));
   console.log(`刷题服务已启动: http://localhost:${PORT}`);
   console.log(`题库: ${questions.length} 题`);
-  console.log(`局域网访问: http://本机IP:${PORT}`);
 });

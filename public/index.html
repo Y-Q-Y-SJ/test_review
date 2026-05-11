@@ -225,7 +225,7 @@ async function showMenu() {
   app.innerHTML = '<div class="loading">加载中...</div>';
   try {
     await Promise.all([loadWrongIds(), loadStarIds(), loadFillWrongIds()]);
-    const [statsData, prog, fillProg] = await Promise.all([api('/api/stats'), api('/api/progress'), api('/api/fill-progress')]);
+    const [statsData, prog] = await Promise.all([api('/api/stats'), api('/api/progress')]);
     const seqIdx = prog.seqIndex || 0;
     const seqLabel = seqIdx > 0 ? `顺序练习（继续第 ${seqIdx + 1} 题）` : '顺序练习';
     app.innerHTML = `
@@ -243,6 +243,7 @@ async function showMenu() {
         <button class="btn-fill-wrong" onclick="startQuiz('fillWrong')" ${fillWrongIds.size === 0 ? 'disabled' : ''}>填空错题 (${fillWrongIds.size})</button>
         <button class="btn-search" onclick="showSearch()">搜索题目</button>
         ${wrongIds.size > 0 ? '<button class="btn-clear" id="btnClear" onclick="clearWrong()">清空错题库</button>' : ''}
+        ${fillWrongIds.size > 0 ? '<button class="btn-clear" id="btnClearFill" onclick="clearFillWrong()" style="background:#e67e22">清空填空错题</button>' : ''}
         <button class="btn-logout" onclick="showLogin()">切换暗号</button>
       </div>
     `;
@@ -504,17 +505,32 @@ function showResult() {
     </div>`;
 }
 
-let clearPending = false;
-function clearWrong() {
-  const btn = document.getElementById('btnClear');
-  if (!clearPending) {
-    clearPending = true;
+function confirmClear(btn, label, onConfirm) {
+  if (btn.dataset.pending) {
+    clearTimeout(parseInt(btn.dataset.pending));
+    delete btn.dataset.pending;
+    btn.textContent = label;
+    btn.classList.remove('confirm');
+    onConfirm();
+  } else {
     btn.textContent = '再次点击确认清空';
     btn.classList.add('confirm');
-    setTimeout(() => { if (clearPending) { clearPending = false; btn.textContent = '清空错题库'; btn.classList.remove('confirm'); } }, 3000);
-  } else {
-    api('/api/wrong', { method: 'DELETE' }).then(() => { wrongIds.clear(); clearPending = false; showMenu(); });
+    btn.dataset.pending = setTimeout(() => {
+      delete btn.dataset.pending;
+      btn.textContent = label;
+      btn.classList.remove('confirm');
+    }, 3000);
   }
+}
+function clearWrong() {
+  confirmClear(document.getElementById('btnClear'), '清空错题库', () => {
+    api('/api/wrong', { method: 'DELETE' }).then(() => { wrongIds.clear(); showMenu(); });
+  });
+}
+function clearFillWrong() {
+  confirmClear(document.getElementById('btnClearFill'), '清空填空错题', () => {
+    api('/api/fill-wrong', { method: 'DELETE' }).then(() => { fillWrongIds.clear(); showMenu(); });
+  });
 }
 
 // ===== Search =====
@@ -541,7 +557,6 @@ function showSearch() {
 
 async function doSearch(keyword) {
   if (!questions.length) questions = await api('/api/questions');
-  await loadStarIds();
   const resultsEl = document.getElementById('searchResults');
   const countEl = document.getElementById('searchCount');
 

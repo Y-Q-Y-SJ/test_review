@@ -52,11 +52,9 @@ async function deploy() {
   console.log('\n[2/7] 检查 Node.js 环境...');
   let r = await run(conn, 'node -v && npm -v', '检查 Node 和 npm 版本');
 
-  // Step 2: Set npm domestic mirror
   console.log('\n[3/7] 配置国内 npm 镜像...');
   await run(conn, 'npm config set registry https://registry.npmmirror.com', '设置 npmmirror 镜像源');
 
-  // Step 3: Pull latest code
   console.log('\n[4/7] 拉取/更新项目代码...');
   r = await run(conn, `test -d ${PROJECT_DIR}/.git && echo "exists" || echo "fresh"`, '检查项目目录');
   if (r.output.includes('exists')) {
@@ -66,29 +64,23 @@ async function deploy() {
     await run(conn, `git clone https://github.com/Y-Q-Y-SJ/test_review.git ${PROJECT_DIR}`, '克隆仓库');
   }
 
-  // Step 4: Install dependencies
   console.log('\n[5/7] 安装项目依赖...');
   await run(conn, `cd ${PROJECT_DIR} && rm -rf node_modules && npm install --production`, 'npm install (使用国内镜像)');
 
-  // Step 5: Install pm2 if needed
   console.log('\n[6/7] 配置进程管理...');
   r = await run(conn, 'command -v pm2 >/dev/null 2>&1 && echo "yes" || echo "no"', '检查 pm2');
   if (r.output.includes('no')) {
     await run(conn, 'npm install -g pm2', '全局安装 pm2');
   }
 
-  // Kill old process on port 3000
-  await run(conn, "lsof -ti:3000 | xargs -r kill -9 2>/dev/null; echo 'ok'", '清理占用 3000 端口的进程');
-
-  // Start/restart with pm2
+  await run(conn, `lsof -ti:${PORT} | xargs -r kill -9 2>/dev/null; echo 'ok'`, '清理端口');
   await run(conn, `cd ${PROJECT_DIR} && pm2 stop quiz-tool 2>/dev/null; pm2 delete quiz-tool 2>/dev/null; PORT=${PORT} pm2 start server/index.js --name quiz-tool`, '启动/重启服务');
   await run(conn, 'pm2 save', '保存 pm2 进程列表');
   await run(conn, 'pm2 startup systemd -u root --hp /root 2>/dev/null || true', '设置开机自启');
 
-  // Step 6: Verify
   console.log('\n[7/7] 验证部署结果...');
   await run(conn, 'pm2 list', '查看进程状态');
-  await run(conn, 'sleep 2 && curl -s -o /dev/null -w "HTTP状态码: %{http_code}\\n" http://localhost:3000/', '验证服务响应');
+  await run(conn, `sleep 2 && curl -s -o /dev/null -w "HTTP状态码: %{http_code}\\n" http://localhost:${PORT}/`, '验证服务响应');
   await run(conn, `curl -s -X POST http://localhost:${PORT}/api/login -H "Content-Type: application/json" -d '{"code":"deploy-test"}'`, '测试登录接口');
 
   conn.end();
