@@ -27,9 +27,15 @@ function getUserFile(code) {
 
 function readUserData(code) {
   const file = getUserFile(code);
-  if (!fs.existsSync(file)) return { wrongIds: [] };
-  try { return JSON.parse(fs.readFileSync(file, 'utf-8')); }
-  catch { return { wrongIds: [] }; }
+  if (!fs.existsSync(file)) return { wrongIds: [], fillWrongIds: [], starIds: [], seqIndex: 0, fillIndex: 0 };
+  try {
+    const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    if (!data.fillWrongIds) data.fillWrongIds = [];
+    if (!data.starIds) data.starIds = [];
+    if (data.fillIndex === undefined) data.fillIndex = 0;
+    return data;
+  }
+  catch { return { wrongIds: [], fillWrongIds: [], starIds: [], seqIndex: 0, fillIndex: 0 }; }
 }
 
 function writeUserData(code, data) {
@@ -37,7 +43,7 @@ function writeUserData(code, data) {
 }
 
 function getCode(req) {
-  return req.headers['x-code'] || '';
+  try { return decodeURIComponent(req.headers['x-code'] || ''); } catch { return req.headers['x-code'] || ''; }
 }
 
 // ===== API Routes =====
@@ -88,8 +94,27 @@ app.post('/api/wrong', (req, res) => {
 app.delete('/api/wrong', (req, res) => {
   const code = getCode(req);
   if (!code) return res.status(401).json({ error: '未登录' });
-  writeUserData(code, { wrongIds: [] });
+  const data = readUserData(code);
+  data.wrongIds = [];
+  writeUserData(code, data);
   res.json({ ok: true, wrongCount: 0 });
+});
+
+app.get('/api/progress', (req, res) => {
+  const code = getCode(req);
+  if (!code) return res.status(401).json({ error: '未登录' });
+  const data = readUserData(code);
+  res.json({ seqIndex: data.seqIndex || 0 });
+});
+
+app.post('/api/progress', (req, res) => {
+  const code = getCode(req);
+  if (!code) return res.status(401).json({ error: '未登录' });
+  const { seqIndex } = req.body;
+  const data = readUserData(code);
+  data.seqIndex = seqIndex;
+  writeUserData(code, data);
+  res.json({ ok: true });
 });
 
 app.get('/api/stats', (req, res) => {
@@ -99,7 +124,83 @@ app.get('/api/stats', (req, res) => {
   const data = readUserData(code);
   const typeCounts = {};
   questions.forEach(q => { typeCounts[q.type] = (typeCounts[q.type] || 0) + 1; });
-  res.json({ totalQuestions: questions.length, typeCounts, wrongCount: data.wrongIds.length });
+  res.json({
+    totalQuestions: questions.length, typeCounts,
+    wrongCount: data.wrongIds.length,
+    starCount: (data.starIds || []).length,
+    fillWrongCount: (data.fillWrongIds || []).length
+  });
+});
+
+// ===== Star APIs =====
+app.get('/api/star', (req, res) => {
+  const code = getCode(req);
+  if (!code) return res.status(401).json({ error: '未登录' });
+  const data = readUserData(code);
+  res.json({ starIds: data.starIds || [] });
+});
+
+app.post('/api/star', (req, res) => {
+  const code = getCode(req);
+  if (!code) return res.status(401).json({ error: '未登录' });
+  const { add = [], remove = [] } = req.body;
+  const data = readUserData(code);
+  if (!data.starIds) data.starIds = [];
+  const set = new Set(data.starIds);
+  for (const id of add) set.add(id);
+  for (const id of remove) set.delete(id);
+  data.starIds = [...set];
+  writeUserData(code, data);
+  res.json({ ok: true, starCount: data.starIds.length });
+});
+
+// ===== Fill Wrong APIs =====
+app.get('/api/fill-wrong', (req, res) => {
+  const code = getCode(req);
+  if (!code) return res.status(401).json({ error: '未登录' });
+  const data = readUserData(code);
+  res.json({ fillWrongIds: data.fillWrongIds || [] });
+});
+
+app.post('/api/fill-wrong', (req, res) => {
+  const code = getCode(req);
+  if (!code) return res.status(401).json({ error: '未登录' });
+  const { add = [], remove = [] } = req.body;
+  const data = readUserData(code);
+  if (!data.fillWrongIds) data.fillWrongIds = [];
+  const set = new Set(data.fillWrongIds);
+  for (const id of add) set.add(id);
+  for (const id of remove) set.delete(id);
+  data.fillWrongIds = [...set];
+  writeUserData(code, data);
+  res.json({ ok: true, fillWrongCount: data.fillWrongIds.length });
+});
+
+app.delete('/api/fill-wrong', (req, res) => {
+  const code = getCode(req);
+  if (!code) return res.status(401).json({ error: '未登录' });
+  const data = readUserData(code);
+  data.fillWrongIds = [];
+  writeUserData(code, data);
+  res.json({ ok: true, fillWrongCount: 0 });
+});
+
+// ===== Fill Progress APIs =====
+app.get('/api/fill-progress', (req, res) => {
+  const code = getCode(req);
+  if (!code) return res.status(401).json({ error: '未登录' });
+  const data = readUserData(code);
+  res.json({ fillIndex: data.fillIndex || 0 });
+});
+
+app.post('/api/fill-progress', (req, res) => {
+  const code = getCode(req);
+  if (!code) return res.status(401).json({ error: '未登录' });
+  const { fillIndex } = req.body;
+  const data = readUserData(code);
+  data.fillIndex = fillIndex;
+  writeUserData(code, data);
+  res.json({ ok: true });
 });
 
 // Fallback
