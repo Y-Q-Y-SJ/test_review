@@ -383,7 +383,7 @@ function renderQuestion() {
     <div class="nav-bar">
       <div class="nav-slider">
         <span class="slider-label">1</span>
-        <input type="range" id="questionSlider" min="1" max="${currentList.length}" value="${currentIndex + 1}" oninput="jumpToQuestion(this.value - 1)">
+        <input type="range" id="questionSlider" min="1" max="${currentList.length}" value="${currentIndex + 1}" onchange="jumpToQuestion(this.value - 1)">
         <span class="slider-label">${currentList.length}</span>
       </div>
       <div class="nav-btns">
@@ -436,6 +436,12 @@ function showPostActionsIfWrongMode() {
   if (mode === 'wrong' || mode === 'fillWrong') {
     document.getElementById('postActions').style.display = 'flex';
   }
+}
+
+function hideConfirmShowActions() {
+  const btn = document.getElementById('btnConfirm');
+  if (btn) btn.style.display = 'none';
+  showPostActionsIfWrongMode();
 }
 
 function toggleOption(el) {
@@ -496,8 +502,7 @@ function checkAnswer() {
   if (isRight) { fb.className = 'feedback show correct'; fb.textContent = '回答正确！'; }
   else { fb.className = 'feedback show wrong'; fb.innerHTML = `回答错误！正确答案：${letters}`; }
 
-  if (document.getElementById('btnConfirm')) document.getElementById('btnConfirm').style.display = 'none';
-  showPostActionsIfWrongMode();
+  hideConfirmShowActions();
 }
 
 function checkFillAnswer(userInput) {
@@ -521,24 +526,21 @@ function checkFillAnswer(userInput) {
   if (isRight) { fb.className = 'feedback show correct'; fb.textContent = '回答正确！'; }
   else { fb.className = 'feedback show wrong'; fb.innerHTML = `回答错误！正确答案：${q.correctAnswer}`; }
 
-  if (document.getElementById('btnConfirm')) document.getElementById('btnConfirm').style.display = 'none';
-  showPostActionsIfWrongMode();
+  hideConfirmShowActions();
 }
 
-function prevQuestion() {
-  if (currentIndex > 0) { currentIndex--; renderQuestion(); }
-}
-
-function nextQuestion() {
-  if (currentIndex < currentList.length - 1) { currentIndex++; renderQuestion(); }
-  else showResult();
-}
-
-function jumpToQuestion(idx) {
+function goToQuestion(idx) {
+  if (idx < 0 || idx >= currentList.length) return;
   currentIndex = idx;
   saveProgress();
   renderQuestion();
 }
+
+function prevQuestion() { goToQuestion(currentIndex - 1); }
+
+function nextQuestion() { goToQuestion(currentIndex + 1); }
+
+function jumpToQuestion(idx) { goToQuestion(idx); }
 
 function showResult() {
   const pct = stats.total ? Math.round(stats.correct / stats.total * 100) : 0;
@@ -624,21 +626,23 @@ async function doSearch(keyword) {
   }
 
   const kw = keyword.toLowerCase();
-  const results = questions.filter(q => {
-    if (q.stem.toLowerCase().includes(kw)) return true;
-    if (q.options && q.options.some(o => o.text && o.text.toLowerCase().includes(kw))) return true;
-    if (q.correctAnswer && q.correctAnswer.toLowerCase().includes(kw)) return true;
-    return false;
-  }).slice(0, 50);
-  countEl.textContent = `找到 ${results.length} 题`;
+  const matches = [];
+  for (let i = 0; i < questions.length && matches.length < 50; i++) {
+    const q = questions[i];
+    if (q.stem.toLowerCase().includes(kw)) { matches.push(i); continue; }
+    if (q.options && q.options.some(o => o.text && o.text.toLowerCase().includes(kw))) { matches.push(i); continue; }
+    if (q.correctAnswer && q.correctAnswer.toLowerCase().includes(kw)) { matches.push(i); }
+  }
+  countEl.textContent = `找到 ${matches.length} 题`;
 
-  resultsEl.innerHTML = results.map((q, i) => `
-    <div class="search-item" onclick="openSearchQuestion(${questions.indexOf(q)})">
+  resultsEl.innerHTML = matches.map(idx => {
+    const q = questions[idx];
+    return `<div class="search-item" onclick="openSearchQuestion(${idx})">
       ${starIds.has(q.id) ? '<span class="si-starred">★</span>' : ''}
       <span class="si-type ${typeCls(q.type)}">${q.type}</span>
       <div class="si-stem">${q.stem.slice(0, 120)}${q.stem.length > 120 ? '...' : ''}</div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 }
 
 function openSearchQuestion(idx) {
