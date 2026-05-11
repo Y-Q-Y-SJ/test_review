@@ -39,7 +39,7 @@ body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica 
 .menu button:disabled { opacity: 0.4; }
 
 /* ===== Quiz ===== */
-.quiz { max-width: 500px; margin: 0 auto; padding: 12px; padding-bottom: 100px; }
+.quiz { max-width: 500px; margin: 0 auto; padding: 12px; padding-bottom: 130px; }
 .progress-bar { background: #e0e0e0; height: 4px; border-radius: 2px; margin-bottom: 8px; overflow: hidden; position: sticky; top: 0; z-index: 10; }
 .progress-fill { height: 100%; background: #4a90d9; transition: width .3s; }
 .progress-fill.star { background: #9b59b6; }
@@ -86,14 +86,22 @@ body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica 
 .btn-star-toggle:active { background: #f3e5f5; }
 .btn-star-toggle.starred { background: #9b59b6; color: #fff; }
 
-/* ===== Bottom actions ===== */
-.actions { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid #eee; padding: 10px 16px; padding-bottom: max(10px, env(safe-area-inset-bottom)); display: flex; gap: 10px; z-index: 20; }
-.actions button { flex: 1; padding: 14px; font-size: 16px; border: none; border-radius: 10px; cursor: pointer; font-weight: 500; -webkit-appearance: none; }
-.actions button:active { transform: scale(0.97); }
-.btn-back { background: #e0e0e0; color: #555; flex: 0.6; }
-.btn-confirm { background: #f0ad4e; color: #fff; display: none; }
-.btn-next { background: #4a90d9; color: #fff; display: none; }
+/* ===== Bottom nav ===== */
+.nav-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid #eee; padding: 8px 12px; padding-bottom: max(8px, env(safe-area-inset-bottom)); z-index: 20; }
+.nav-slider { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.nav-slider .slider-label { font-size: 12px; color: #999; min-width: 28px; text-align: center; }
+.nav-slider input[type=range] { flex: 1; height: 4px; -webkit-appearance: none; appearance: none; background: #e0e0e0; border-radius: 2px; outline: none; }
+.nav-slider input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #4a90d9; cursor: pointer; }
+.nav-slider input[type=range]::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #4a90d9; border: none; cursor: pointer; }
+.nav-btns { display: flex; gap: 8px; }
+.nav-btns button { flex: 1; padding: 12px; font-size: 15px; border: none; border-radius: 10px; cursor: pointer; font-weight: 500; -webkit-appearance: none; }
+.nav-btns button:active { transform: scale(0.97); }
+.btn-prev { background: #e0e0e0; color: #555; }
+.btn-next { background: #4a90d9; color: #fff; }
 .btn-next.wrong-mode { background: #f0ad4e; }
+.btn-nav-confirm { background: #f0ad4e; color: #fff; }
+.btn-nav-confirm:active { background: #e6970c; }
+.btn-menu { background: none; color: #999; border: 1px solid #ddd !important; font-size: 13px !important; flex: 0.5 !important; }
 
 /* ===== Result ===== */
 .result { max-width: 500px; margin: 0 auto; padding: 40px 16px; text-align: center; }
@@ -372,11 +380,18 @@ function renderQuestion() {
         <button class="btn-star-toggle${isStarred ? ' starred' : ''}" id="btnStarToggle" onclick="toggleStar()">${isStarred ? '已标星' : '标星'}</button>
       </div>
     </div>
-    <div class="actions">
-      <button class="btn-back" onclick="goBack()">返回</button>
-      ${isFill ? '<button class="btn-confirm" id="btnConfirm" style="display:block" onclick="submitFill()">确认</button>' : ''}
-      ${isMulti ? '<button class="btn-confirm" id="btnConfirm" onclick="submitAnswer()">确认答案</button>' : ''}
-      <button class="btn-next ${mode === 'wrong' || mode === 'fillWrong' ? 'wrong-mode' : ''}" id="btnNext" onclick="nextQuestion()">下一题</button>
+    <div class="nav-bar">
+      <div class="nav-slider">
+        <span class="slider-label">1</span>
+        <input type="range" id="questionSlider" min="1" max="${currentList.length}" value="${currentIndex + 1}" oninput="jumpToQuestion(this.value - 1)">
+        <span class="slider-label">${currentList.length}</span>
+      </div>
+      <div class="nav-btns">
+        <button class="btn-menu" onclick="goBack()">菜单</button>
+        <button class="btn-prev" onclick="prevQuestion()" ${currentIndex === 0 ? 'disabled style="opacity:0.4"' : ''}>&lt;</button>
+        ${!answered && (isMulti || isFill) ? `<button class="btn-nav-confirm" id="btnConfirm" onclick="${isFill ? 'submitFill()' : 'submitAnswer()'}">确认</button>` : ''}
+        <button class="btn-next ${mode === 'wrong' || mode === 'fillWrong' ? 'wrong-mode' : ''}" onclick="nextQuestion()" ${currentIndex >= currentList.length - 1 ? 'disabled style="opacity:0.4"' : ''}>&gt;</button>
+      </div>
     </div>`;
   if (isFill) document.getElementById('fillInput').focus();
 }
@@ -428,7 +443,8 @@ function toggleOption(el) {
   const idx = parseInt(el.dataset.index);
   if (selectedOptions.has(idx)) { selectedOptions.delete(idx); el.classList.remove('selected'); }
   else { selectedOptions.add(idx); el.classList.add('selected'); }
-  document.getElementById('btnConfirm').style.display = selectedOptions.size > 0 ? 'block' : 'none';
+  const btn = document.getElementById('btnConfirm');
+  if (btn) btn.style.display = selectedOptions.size > 0 ? 'block' : 'none';
 }
 
 function selectOption(el) {
@@ -481,7 +497,6 @@ function checkAnswer() {
   else { fb.className = 'feedback show wrong'; fb.innerHTML = `回答错误！正确答案：${letters}`; }
 
   if (document.getElementById('btnConfirm')) document.getElementById('btnConfirm').style.display = 'none';
-  document.getElementById('btnNext').style.display = 'block';
   showPostActionsIfWrongMode();
 }
 
@@ -506,15 +521,22 @@ function checkFillAnswer(userInput) {
   if (isRight) { fb.className = 'feedback show correct'; fb.textContent = '回答正确！'; }
   else { fb.className = 'feedback show wrong'; fb.innerHTML = `回答错误！正确答案：${q.correctAnswer}`; }
 
-  document.getElementById('btnConfirm').style.display = 'none';
-  document.getElementById('btnNext').style.display = 'block';
+  if (document.getElementById('btnConfirm')) document.getElementById('btnConfirm').style.display = 'none';
   showPostActionsIfWrongMode();
 }
 
+function prevQuestion() {
+  if (currentIndex > 0) { currentIndex--; renderQuestion(); }
+}
+
 function nextQuestion() {
-  currentIndex++;
-  if (mode === 'seq') api('/api/progress', { method: 'POST', body: JSON.stringify({ seqIndex: currentIndex }) });
-  if (mode === 'fill') api('/api/fill-progress', { method: 'POST', body: JSON.stringify({ fillIndex: currentIndex }) });
+  if (currentIndex < currentList.length - 1) { currentIndex++; renderQuestion(); }
+  else showResult();
+}
+
+function jumpToQuestion(idx) {
+  currentIndex = idx;
+  saveProgress();
   renderQuestion();
 }
 
@@ -575,8 +597,10 @@ function showSearch() {
       <div class="search-count" id="searchCount"></div>
       <div class="search-results" id="searchResults"></div>
     </div>
-    <div class="actions">
-      <button class="btn-back" onclick="goBack()">返回</button>
+    <div class="nav-bar">
+      <div class="nav-btns">
+        <button class="btn-menu" onclick="goBack()">返回菜单</button>
+      </div>
     </div>`;
 
   const input = document.getElementById('searchInput');
