@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>刷题工具</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; }
+
+/* ===== Login ===== */
+.login { max-width: 400px; margin: 0 auto; padding: 80px 20px 20px; text-align: center; }
+.login h1 { font-size: 24px; margin-bottom: 8px; }
+.login .sub { color: #999; font-size: 14px; margin-bottom: 40px; }
+.login input { width: 100%; padding: 16px; font-size: 17px; border: 2px solid #e0e0e0; border-radius: 12px; outline: none; text-align: center; background: #fff; transition: border-color .2s; }
+.login input:focus { border-color: #4a90d9; }
+.login button { width: 100%; padding: 16px; margin-top: 16px; font-size: 17px; border: none; border-radius: 12px; background: #4a90d9; color: #fff; cursor: pointer; font-weight: 500; }
+.login button:active { transform: scale(0.98); }
+.login .error { color: #d9534f; font-size: 14px; margin-top: 12px; display: none; }
+.login .hint { color: #bbb; font-size: 13px; margin-top: 24px; line-height: 1.8; }
+
+/* ===== Menu ===== */
+.menu { max-width: 500px; margin: 0 auto; padding: 40px 16px; text-align: center; }
+.menu h1 { font-size: 24px; margin-bottom: 8px; }
+.menu .user-info { color: #999; font-size: 13px; margin-bottom: 32px; line-height: 1.8; }
+.menu .user-info .code { color: #4a90d9; }
+.menu button { display: block; width: 100%; padding: 16px; margin-bottom: 12px; font-size: 17px; border: none; border-radius: 12px; cursor: pointer; font-weight: 500; }
+.menu button:active { transform: scale(0.98); }
+.btn-seq { background: #4a90d9; color: #fff; }
+.btn-rand { background: #5cb85c; color: #fff; }
+.btn-wrong { background: #f0ad4e; color: #fff; }
+.btn-clear { background: #d9534f; color: #fff; font-size: 14px; padding: 12px; margin-top: 16px; }
+.btn-clear.confirm { background: #c9302c; }
+.btn-logout { background: none; color: #999; font-size: 14px; padding: 10px; border: 1px solid #ddd !important; }
+.menu button:disabled { opacity: 0.4; }
+
+/* ===== Quiz ===== */
+.quiz { max-width: 500px; margin: 0 auto; padding: 12px; padding-bottom: 100px; }
+.progress-bar { background: #e0e0e0; height: 6px; border-radius: 3px; margin-bottom: 8px; overflow: hidden; position: sticky; top: 0; z-index: 10; }
+.progress-fill { height: 100%; background: #4a90d9; transition: width .3s; }
+.progress-text { font-size: 13px; color: #999; margin-bottom: 16px; display: flex; justify-content: space-between; }
+
+.q-header { margin-bottom: 16px; }
+.q-type { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 12px; color: #fff; margin-bottom: 10px; }
+.type-single { background: #4a90d9; }
+.type-multi { background: #f0ad4e; }
+.type-judge { background: #5cb85c; }
+.type-fill { background: #9b59b6; }
+.q-stem { font-size: 17px; line-height: 1.7; color: #222; }
+
+.options { list-style: none; margin: 16px 0; }
+.options li { padding: 15px 16px; margin-bottom: 10px; border: 2px solid #e0e0e0; border-radius: 12px; cursor: pointer; font-size: 16px; line-height: 1.6; background: #fff; transition: all .15s; }
+.options li:active { transform: scale(0.98); }
+.options li.selected { border-color: #4a90d9; background: #eef4fd; }
+.options li.correct { border-color: #5cb85c; background: #e8f5e9; color: #2e7d32; }
+.options li.wrong { border-color: #d9534f; background: #fdecea; color: #c62828; }
+.options li.disabled { pointer-events: none; opacity: 0.85; }
+.options li .letter { font-weight: bold; margin-right: 8px; color: #666; }
+.options li.correct .letter { color: #2e7d32; }
+.options li.wrong .letter { color: #c62828; }
+
+.fill-area { margin: 20px 0; }
+.fill-input { width: 100%; padding: 14px 16px; font-size: 17px; border: 2px solid #e0e0e0; border-radius: 12px; outline: none; background: #fff; transition: border-color .2s; }
+.fill-input:focus { border-color: #4a90d9; }
+.fill-input.correct { border-color: #5cb85c; background: #e8f5e9; color: #2e7d32; }
+.fill-input.wrong { border-color: #d9534f; background: #fdecea; color: #c62828; }
+.fill-input:disabled { opacity: 0.85; }
+
+.feedback { padding: 14px 16px; border-radius: 12px; margin: 14px 0; font-size: 15px; line-height: 1.6; display: none; }
+.feedback.show { display: block; }
+.feedback.correct { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+.feedback.wrong { background: #fdecea; color: #c62828; border: 1px solid #ef9a9a; }
+
+.actions { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid #eee; padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom)); display: flex; gap: 10px; z-index: 20; }
+.actions button { flex: 1; padding: 14px; font-size: 16px; border: none; border-radius: 10px; cursor: pointer; font-weight: 500; }
+.actions button:active { transform: scale(0.97); }
+.btn-back { background: #e0e0e0; color: #555; flex: 0.6; }
+.btn-confirm { background: #f0ad4e; color: #fff; display: none; }
+.btn-next { background: #4a90d9; color: #fff; display: none; }
+.btn-next.wrong-mode { background: #f0ad4e; }
+
+.result { max-width: 500px; margin: 0 auto; padding: 60px 16px; text-align: center; }
+.result h1 { font-size: 24px; margin-bottom: 16px; }
+.result .score { font-size: 48px; font-weight: bold; color: #4a90d9; margin: 20px 0; }
+.result .detail { color: #888; font-size: 15px; line-height: 2; margin-bottom: 32px; }
+
+.loading { text-align: center; padding: 80px 20px; color: #999; font-size: 16px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// ===== State =====
+let code = '';
+let questions = [];
+let wrongIds = new Set();
+let currentList = [];
+let currentIndex = 0;
+let mode = '';
+let answered = false;
+let selectedOptions = new Set();
+let stats = { total: 0, correct: 0 };
+
+// ===== API helpers =====
+async function api(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json', 'x-code': code };
+  const res = await fetch(path, { ...opts, headers: { ...headers, ...opts.headers } });
+  return res.json();
+}
+
+async function loadWrongIds() {
+  const data = await api('/api/wrong');
+  wrongIds = new Set(data.wrongIds || []);
+}
+
+async function syncWrong(add = [], remove = []) {
+  for (const id of add) wrongIds.add(id);
+  for (const id of remove) wrongIds.delete(id);
+  await api('/api/wrong', { method: 'POST', body: JSON.stringify({ add, remove }) });
+}
+
+function shuffle(a) {
+  const arr = [...a];
+  for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
+  return arr;
+}
+
+// ===== Login =====
+function showLogin() {
+  code = '';
+  document.getElementById('app').innerHTML = `
+    <div class="login">
+      <h1>刷题工具</h1>
+      <div class="sub">输入暗号开始刷题</div>
+      <input id="codeInput" type="text" placeholder="输入你的暗号" autocomplete="off" autofocus>
+      <button onclick="doLogin()">进入</button>
+      <div class="error" id="loginError"></div>
+      <div class="hint">首次使用输入新暗号即可自动创建<br>不同暗号的错题库相互隔离</div>
+    </div>
+  `;
+  document.getElementById('codeInput').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+}
+
+async function doLogin() {
+  const input = document.getElementById('codeInput').value.trim();
+  if (input.length < 2) {
+    const err = document.getElementById('loginError');
+    err.textContent = '暗号至少2个字符';
+    err.style.display = 'block';
+    return;
+  }
+  try {
+    const data = await api('/api/login', { method: 'POST', body: JSON.stringify({ code: input }) });
+    if (data.ok) {
+      code = input;
+      showMenu();
+    }
+  } catch {
+    const err = document.getElementById('loginError');
+    err.textContent = '连接失败，请检查服务是否启动';
+    err.style.display = 'block';
+  }
+}
+
+// ===== Menu =====
+async function showMenu() {
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="loading">加载中...</div>';
+  try {
+    await loadWrongIds();
+    const statsData = await api('/api/stats');
+    app.innerHTML = `
+      <div class="menu">
+        <h1>刷题工具</h1>
+        <div class="user-info">
+          暗号：<span class="code">${code}</span><br>
+          题库 ${statsData.totalQuestions} 题 · 错题 ${wrongIds.size} 题
+        </div>
+        <button class="btn-seq" onclick="startQuiz('seq')">顺序练习</button>
+        <button class="btn-rand" onclick="startQuiz('rand')">随机练习</button>
+        <button class="btn-wrong" onclick="startQuiz('wrong')" ${wrongIds.size === 0 ? 'disabled' : ''}>错题回顾 (${wrongIds.size})</button>
+        ${wrongIds.size > 0 ? '<button class="btn-clear" id="btnClear" onclick="clearWrong()">清空错题库</button>' : ''}
+        <button class="btn-logout" onclick="showLogin()">切换暗号</button>
+      </div>
+    `;
+  } catch {
+    showLogin();
+  }
+}
+
+// ===== Quiz =====
+async function startQuiz(m) {
+  mode = m;
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="loading">加载题目...</div>';
+  try {
+    if (!questions.length) questions = await api('/api/questions');
+    await loadWrongIds();
+    if (m === 'seq') currentList = [...questions];
+    else if (m === 'rand') currentList = shuffle(questions);
+    else if (m === 'wrong') {
+      currentList = shuffle(questions.filter(q => wrongIds.has(q.id)));
+      if (!currentList.length) { showMenu(); return; }
+    }
+    currentIndex = 0;
+    stats = { total: 0, correct: 0 };
+    renderQuestion();
+  } catch {
+    app.innerHTML = '<div class="loading">加载失败，请重试</div>';
+  }
+}
+
+function renderQuestion() {
+  if (currentIndex >= currentList.length) { showResult(); return; }
+  answered = false;
+  selectedOptions.clear();
+  const q = currentList[currentIndex];
+  const pct = ((currentIndex + 1) / currentList.length * 100).toFixed(1);
+  const isMulti = q.type === '多选题';
+  const isFill = q.type === '填空题';
+  const typeCls = q.type === '单选题' ? 'type-single' : q.type === '多选题' ? 'type-multi' : q.type === '判断题' ? 'type-judge' : 'type-fill';
+
+  let bodyHtml;
+  if (isFill) {
+    bodyHtml = `<div class="fill-area"><input class="fill-input" id="fillInput" type="text" placeholder="请输入答案" autocomplete="off"></div>`;
+  } else {
+    bodyHtml = `<ul class="options" id="options">${q.options.map((opt, i) => `
+      <li data-index="${i}" onclick="${isMulti ? 'toggleOption(this)' : 'selectOption(this)'}">
+        <span class="letter">${opt.letter}.</span>${opt.text}
+      </li>`).join('')}</ul>`;
+  }
+
+  document.getElementById('app').innerHTML = `
+    <div class="quiz">
+      <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+      <div class="progress-text">
+        <span>${currentIndex + 1} / ${currentList.length}</span>
+        <span>正确率 ${stats.total ? Math.round(stats.correct / stats.total * 100) : 0}% (${stats.correct}/${stats.total})</span>
+      </div>
+      <div class="q-header">
+        <span class="q-type ${typeCls}">${q.type}</span>
+        <div class="q-stem">${q.stem}</div>
+      </div>
+      ${bodyHtml}
+      <div class="feedback" id="feedback"></div>
+    </div>
+    <div class="actions">
+      <button class="btn-back" onclick="showMenu()">返回</button>
+      ${isFill ? '<button class="btn-confirm" id="btnConfirm" style="display:block" onclick="submitFill()">确认</button>' : ''}
+      ${isMulti ? '<button class="btn-confirm" id="btnConfirm" onclick="submitAnswer()">确认答案</button>' : ''}
+      <button class="btn-next ${mode === 'wrong' ? 'wrong-mode' : ''}" id="btnNext" onclick="nextQuestion()">下一题</button>
+    </div>`;
+  if (isFill) document.getElementById('fillInput').focus();
+}
+
+function toggleOption(el) {
+  if (answered) return;
+  const idx = parseInt(el.dataset.index);
+  if (selectedOptions.has(idx)) { selectedOptions.delete(idx); el.classList.remove('selected'); }
+  else { selectedOptions.add(idx); el.classList.add('selected'); }
+  document.getElementById('btnConfirm').style.display = selectedOptions.size > 0 ? 'block' : 'none';
+}
+
+function selectOption(el) {
+  if (answered) return;
+  answered = true;
+  selectedOptions.add(parseInt(el.dataset.index));
+  checkAnswer();
+}
+
+function submitAnswer() {
+  if (answered || selectedOptions.size === 0) return;
+  answered = true;
+  checkAnswer();
+}
+
+function submitFill() {
+  if (answered) return;
+  const input = document.getElementById('fillInput');
+  if (!input.value.trim()) return;
+  answered = true;
+  checkFillAnswer(input.value.trim());
+}
+
+function checkAnswer() {
+  const q = currentList[currentIndex];
+  const els = document.querySelectorAll('#options li');
+  const correct = new Set();
+  q.options.forEach((o, i) => { if (o.correct) correct.add(i); });
+
+  let isRight;
+  if (q.type === '多选题') {
+    isRight = selectedOptions.size === correct.size && [...selectedOptions].every(i => correct.has(i));
+  } else {
+    isRight = correct.has([...selectedOptions][0]);
+  }
+
+  stats.total++;
+  if (isRight) { stats.correct++; syncWrong([], [q.id]); }
+  else { syncWrong([q.id], []); }
+
+  els.forEach((el, i) => {
+    el.classList.add('disabled');
+    if (correct.has(i)) el.classList.add('correct');
+    if (selectedOptions.has(i) && !correct.has(i)) el.classList.add('wrong');
+  });
+
+  const fb = document.getElementById('feedback');
+  const letters = q.options.filter(o => o.correct).map(o => o.letter).join('');
+  if (isRight) { fb.className = 'feedback show correct'; fb.textContent = '回答正确！'; }
+  else { fb.className = 'feedback show wrong'; fb.innerHTML = `回答错误！正确答案：${letters}`; }
+
+  if (document.getElementById('btnConfirm')) document.getElementById('btnConfirm').style.display = 'none';
+  document.getElementById('btnNext').style.display = 'block';
+}
+
+function checkFillAnswer(userInput) {
+  const q = currentList[currentIndex];
+  const input = document.getElementById('fillInput');
+  input.disabled = true;
+  const normalize = s => s.replace(/\s+/g, '').replace(/（/g, '(').replace(/）/g, ')');
+  const isRight = normalize(userInput) === normalize(q.correctAnswer);
+
+  stats.total++;
+  if (isRight) { stats.correct++; input.classList.add('correct'); syncWrong([], [q.id]); }
+  else { input.classList.add('wrong'); syncWrong([q.id], []); }
+
+  const fb = document.getElementById('feedback');
+  if (isRight) { fb.className = 'feedback show correct'; fb.textContent = '回答正确！'; }
+  else { fb.className = 'feedback show wrong'; fb.innerHTML = `回答错误！正确答案：${q.correctAnswer}`; }
+
+  document.getElementById('btnConfirm').style.display = 'none';
+  document.getElementById('btnNext').style.display = 'block';
+}
+
+function nextQuestion() { currentIndex++; renderQuestion(); }
+
+function showResult() {
+  const pct = stats.total ? Math.round(stats.correct / stats.total * 100) : 0;
+  document.getElementById('app').innerHTML = `
+    <div class="result">
+      <h1>练习完成</h1>
+      <div class="score">${pct}%</div>
+      <div class="detail">共 ${stats.total} 题<br>正确 ${stats.correct} 题 · 错误 ${stats.total - stats.correct} 题</div>
+      <button class="btn-seq" style="width:100%;padding:16px;font-size:17px;border:none;border-radius:12px;color:#fff;cursor:pointer;margin-bottom:12px" onclick="showMenu()">返回菜单</button>
+      ${wrongIds.size > 0 ? `<button class="btn-wrong" style="width:100%;padding:16px;font-size:17px;border:none;border-radius:12px;color:#fff;cursor:pointer" onclick="startQuiz('wrong')">继续练习错题 (${wrongIds.size})</button>` : ''}
+    </div>`;
+}
+
+let clearPending = false;
+function clearWrong() {
+  const btn = document.getElementById('btnClear');
+  if (!clearPending) {
+    clearPending = true;
+    btn.textContent = '再次点击确认清空';
+    btn.classList.add('confirm');
+    setTimeout(() => { if (clearPending) { clearPending = false; btn.textContent = '清空错题库'; btn.classList.remove('confirm'); } }, 3000);
+  } else {
+    api('/api/wrong', { method: 'DELETE' }).then(() => { wrongIds.clear(); clearPending = false; showMenu(); });
+  }
+}
+
+// ===== Init =====
+showLogin();
+</script>
+</body>
+</html>
