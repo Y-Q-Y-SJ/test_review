@@ -29,15 +29,16 @@ function getUserFile(code) {
 
 function readUserData(code) {
   const file = getUserFile(code);
-  if (!fs.existsSync(file)) return { wrongIds: [], fillWrongIds: [], starIds: [], seqIndex: 0, fillIndex: 0 };
+  if (!fs.existsSync(file)) return { wrongIds: [], fillWrongIds: [], starIds: [], seqIndex: 0, fillIndex: 0, attemptCounts: {} };
   try {
     const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
     if (!data.fillWrongIds) data.fillWrongIds = [];
     if (!data.starIds) data.starIds = [];
     if (data.fillIndex === undefined) data.fillIndex = 0;
+    if (!data.attemptCounts) data.attemptCounts = {};
     return data;
   }
-  catch { return { wrongIds: [], fillWrongIds: [], starIds: [], seqIndex: 0, fillIndex: 0 }; }
+  catch { return { wrongIds: [], fillWrongIds: [], starIds: [], seqIndex: 0, fillIndex: 0, attemptCounts: {} }; }
 }
 
 function writeUserData(code, data) {
@@ -122,6 +123,21 @@ app.post('/api/fill-progress', requireAuth, (req, res) => {
   data.fillIndex = req.body.fillIndex;
   writeUserData(req.userCode, data);
   res.json({ ok: true });
+});
+
+app.get('/api/attempts', requireAuth, (req, res) => {
+  const data = readUserData(req.userCode);
+  res.json({ attemptCounts: data.attemptCounts || {} });
+});
+
+app.post('/api/attempts', requireAuth, (req, res) => {
+  const { questionId } = req.body;
+  if (!questionId) return res.status(400).json({ error: 'missing questionId' });
+  const data = readUserData(req.userCode);
+  if (!data.attemptCounts) data.attemptCounts = {};
+  data.attemptCounts[questionId] = (data.attemptCounts[questionId] || 0) + 1;
+  writeUserData(req.userCode, data);
+  res.json({ ok: true, count: data.attemptCounts[questionId] });
 });
 
 app.get('/api/stats', requireAuth, (req, res) => {

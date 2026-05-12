@@ -48,6 +48,7 @@ body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica 
 
 .q-header { margin-bottom: 12px; }
 .q-type { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 12px; color: #fff; margin-bottom: 8px; }
+.q-attempts { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 12px; color: #666; background: #f0f0f0; margin-left: 6px; margin-bottom: 8px; }
 .type-single { background: #4a90d9; }
 .type-multi { background: #f0ad4e; }
 .type-judge { background: #5cb85c; }
@@ -141,6 +142,7 @@ let mode = '';
 let answered = false;
 let selectedOptions = new Set();
 let stats = { total: 0, correct: 0 };
+let attemptCounts = {};
 
 // ===== History management =====
 let historyPushed = false;
@@ -208,6 +210,16 @@ async function syncStar(add = [], remove = []) {
   for (const id of add) starIds.add(id);
   for (const id of remove) starIds.delete(id);
   await api('/api/star', { method: 'POST', body: JSON.stringify({ add, remove }) });
+}
+
+async function loadAttemptCounts() {
+  const data = await api('/api/attempts');
+  attemptCounts = data.attemptCounts || {};
+}
+
+function recordAttempt(questionId) {
+  attemptCounts[questionId] = (attemptCounts[questionId] || 0) + 1;
+  api('/api/attempts', { method: 'POST', body: JSON.stringify({ questionId }) });
 }
 
 function shuffle(a) {
@@ -304,7 +316,7 @@ async function startQuiz(m) {
   app.innerHTML = '<div class="loading">加载题目...</div>';
   try {
     if (!questions.length) questions = await api('/api/questions');
-    await Promise.all([loadWrongIds(), loadStarIds(), loadFillWrongIds()]);
+    await Promise.all([loadWrongIds(), loadStarIds(), loadFillWrongIds(), loadAttemptCounts()]);
 
     if (m === 'seq') {
       currentList = [...questions];
@@ -373,6 +385,7 @@ function renderQuestion() {
       </div>
       <div class="q-header">
         <span class="q-type ${typeCls(q.type)}">${q.type}</span>
+        ${attemptCounts[q.id] ? `<span class="q-attempts">已做 ${attemptCounts[q.id]} 次</span>` : ''}
         <div class="q-stem">${q.stem}</div>
       </div>
       ${bodyHtml}
@@ -501,6 +514,7 @@ function checkAnswer() {
   stats.total++;
   if (isRight) { stats.correct++; syncWrong([], [q.id]); }
   else { syncWrong([q.id], []); }
+  recordAttempt(q.id);
 
   els.forEach((el, i) => {
     el.classList.add('disabled');
@@ -532,6 +546,7 @@ function checkFillAnswer(userInput) {
   } else {
     if (isRight) syncWrong([], [q.id]); else syncWrong([q.id], []);
   }
+  recordAttempt(q.id);
 
   const fb = document.getElementById('feedback');
   if (isRight) { fb.className = 'feedback show correct'; fb.textContent = '回答正确！'; }
@@ -556,7 +571,6 @@ function sliderCommit(idx) {
   if (idx < 0 || idx >= currentList.length) return;
   if (idx === currentIndex) return;
   currentIndex = idx;
-  saveProgress();
   renderQuestion();
 }
 
