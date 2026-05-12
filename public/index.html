@@ -90,9 +90,11 @@ body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica 
 .nav-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid #eee; padding: 8px 12px; padding-bottom: max(8px, env(safe-area-inset-bottom)); z-index: 20; }
 .nav-slider { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .nav-slider .slider-label { font-size: 12px; color: #999; min-width: 28px; text-align: center; }
-.nav-slider input[type=range] { flex: 1; height: 4px; -webkit-appearance: none; appearance: none; background: #e0e0e0; border-radius: 2px; outline: none; }
-.nav-slider input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #4a90d9; cursor: pointer; }
-.nav-slider input[type=range]::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #4a90d9; border: none; cursor: pointer; }
+.nav-slider input[type=range] { flex: 1; height: 4px; -webkit-appearance: none; appearance: none; background: #e0e0e0; border-radius: 2px; outline: none; touch-action: none; }
+.nav-slider input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; border-radius: 50%; background: #4a90d9; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+.nav-slider input[type=range]::-moz-range-thumb { width: 24px; height: 24px; border-radius: 50%; background: #4a90d9; border: none; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+.slider-tooltip { position: absolute; bottom: 36px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 4px 10px; border-radius: 6px; font-size: 13px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .15s; }
+.slider-tooltip.show { opacity: 1; }
 .nav-btns { display: flex; gap: 8px; }
 .nav-btns button { flex: 1; padding: 12px; font-size: 15px; border: none; border-radius: 10px; cursor: pointer; font-weight: 500; -webkit-appearance: none; }
 .nav-btns button:active { transform: scale(0.97); }
@@ -381,10 +383,13 @@ function renderQuestion() {
       </div>
     </div>
     <div class="nav-bar">
-      <div class="nav-slider">
+      <div class="nav-slider" style="position:relative">
         <span class="slider-label">1</span>
-        <input type="range" id="questionSlider" min="1" max="${currentList.length}" value="${currentIndex + 1}" onchange="jumpToQuestion(this.value - 1)">
+        <input type="range" id="questionSlider" min="1" max="${currentList.length}" value="${currentIndex + 1}"
+          oninput="sliderPreview(this.value)"
+          onchange="sliderCommit(this.value - 1)">
         <span class="slider-label">${currentList.length}</span>
+        <div class="slider-tooltip" id="sliderTooltip">${currentIndex + 1}</div>
       </div>
       <div class="nav-btns">
         <button class="btn-menu" onclick="goBack()">菜单</button>
@@ -394,6 +399,12 @@ function renderQuestion() {
       </div>
     </div>`;
   if (isFill) document.getElementById('fillInput').focus();
+  // Prevent touch events on slider from triggering browser back gesture
+  const slider = document.getElementById('questionSlider');
+  if (slider) {
+    slider.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
+    slider.addEventListener('touchmove', e => e.stopPropagation(), { passive: true });
+  }
 }
 
 function goBack() {
@@ -527,6 +538,26 @@ function checkFillAnswer(userInput) {
   else { fb.className = 'feedback show wrong'; fb.innerHTML = `回答错误！正确答案：${q.correctAnswer}`; }
 
   hideConfirmShowActions();
+}
+
+function sliderPreview(val) {
+  const tooltip = document.getElementById('sliderTooltip');
+  if (tooltip) { tooltip.textContent = val; tooltip.classList.add('show'); }
+  // Update progress bar and text in real-time
+  const fill = document.querySelector('.progress-fill');
+  if (fill) fill.style.width = (val / currentList.length * 100).toFixed(1) + '%';
+  const label = document.querySelector('.progress-text span:first-child');
+  if (label) label.textContent = val + ' / ' + currentList.length;
+}
+
+function sliderCommit(idx) {
+  const tooltip = document.getElementById('sliderTooltip');
+  if (tooltip) tooltip.classList.remove('show');
+  if (idx < 0 || idx >= currentList.length) return;
+  if (idx === currentIndex) return;
+  currentIndex = idx;
+  saveProgress();
+  renderQuestion();
 }
 
 function goToQuestion(idx) {
