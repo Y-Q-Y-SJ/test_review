@@ -27,18 +27,18 @@ function getUserFile(code) {
   return path.join(USERS_DIR, `${codeToHash(code)}.json`);
 }
 
+const DEFAULT_USER_DATA = { wrongIds: [], fillWrongIds: [], starIds: [], seqIndex: 0, fillIndex: 0, attemptCounts: {} };
+
 function readUserData(code) {
-  const file = getUserFile(code);
-  if (!fs.existsSync(file)) return { wrongIds: [], fillWrongIds: [], starIds: [], seqIndex: 0, fillIndex: 0, attemptCounts: {} };
   try {
-    const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    const data = JSON.parse(fs.readFileSync(getUserFile(code), 'utf-8'));
     if (!data.fillWrongIds) data.fillWrongIds = [];
     if (!data.starIds) data.starIds = [];
     if (data.fillIndex === undefined) data.fillIndex = 0;
     if (!data.attemptCounts) data.attemptCounts = {};
     return data;
   }
-  catch { return { wrongIds: [], fillWrongIds: [], starIds: [], seqIndex: 0, fillIndex: 0, attemptCounts: {} }; }
+  catch { return { ...DEFAULT_USER_DATA }; }
 }
 
 function writeUserData(code, data) {
@@ -132,13 +132,16 @@ app.get('/api/attempts', requireAuth, (req, res) => {
 });
 
 app.post('/api/attempts', requireAuth, (req, res) => {
-  const { questionId } = req.body;
-  if (!questionId) return res.status(400).json({ error: 'missing questionId' });
+  const { questionId, questionIds } = req.body;
+  const ids = questionIds || (questionId ? [questionId] : []);
+  if (!ids.length) return res.status(400).json({ error: 'missing questionId' });
   const data = readUserData(req.userCode);
   if (!data.attemptCounts) data.attemptCounts = {};
-  data.attemptCounts[questionId] = (data.attemptCounts[questionId] || 0) + 1;
+  for (const id of ids) {
+    data.attemptCounts[id] = (data.attemptCounts[id] || 0) + 1;
+  }
   writeUserData(req.userCode, data);
-  res.json({ ok: true, count: data.attemptCounts[questionId] });
+  res.json({ ok: true });
 });
 
 app.get('/api/stats', requireAuth, (req, res) => {
