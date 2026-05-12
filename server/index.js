@@ -126,6 +126,7 @@ app.post('/api/fill-progress', requireAuth, (req, res) => {
 });
 
 app.get('/api/attempts', requireAuth, (req, res) => {
+  res.set('Cache-Control', 'no-store');
   const data = readUserData(req.userCode);
   res.json({ attemptCounts: data.attemptCounts || {} });
 });

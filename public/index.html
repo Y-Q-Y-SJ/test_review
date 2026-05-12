@@ -159,7 +159,6 @@ function navigate(fn) {
 window.addEventListener('popstate', () => {
   inPopstate = true;
   if (mode && mode !== 'menu') {
-    saveProgress();
     showMenu();
   } else {
     showLogin();
@@ -213,13 +212,19 @@ async function syncStar(add = [], remove = []) {
 }
 
 async function loadAttemptCounts() {
-  const data = await api('/api/attempts');
-  attemptCounts = data.attemptCounts || {};
+  const data = await api('/api/attempts?t=' + Date.now());
+  const serverCounts = data.attemptCounts || {};
+  // Merge: keep the higher count from local or server
+  for (const id in serverCounts) {
+    if (!attemptCounts[id] || serverCounts[id] > attemptCounts[id]) {
+      attemptCounts[id] = serverCounts[id];
+    }
+  }
 }
 
 function recordAttempt(questionId) {
   attemptCounts[questionId] = (attemptCounts[questionId] || 0) + 1;
-  api('/api/attempts', { method: 'POST', body: JSON.stringify({ questionId }) });
+  api('/api/attempts', { method: 'POST', body: JSON.stringify({ questionId }) }).catch(() => {});
 }
 
 function shuffle(a) {
@@ -421,7 +426,6 @@ function renderQuestion() {
 }
 
 function goBack() {
-  saveProgress();
   history.back();
 }
 
@@ -515,6 +519,7 @@ function checkAnswer() {
   if (isRight) { stats.correct++; syncWrong([], [q.id]); }
   else { syncWrong([q.id], []); }
   recordAttempt(q.id);
+  saveProgress();
 
   els.forEach((el, i) => {
     el.classList.add('disabled');
@@ -547,6 +552,7 @@ function checkFillAnswer(userInput) {
     if (isRight) syncWrong([], [q.id]); else syncWrong([q.id], []);
   }
   recordAttempt(q.id);
+  saveProgress();
 
   const fb = document.getElementById('feedback');
   if (isRight) { fb.className = 'feedback show correct'; fb.textContent = '回答正确！'; }
@@ -577,7 +583,6 @@ function sliderCommit(idx) {
 function goToQuestion(idx) {
   if (idx < 0 || idx >= currentList.length) return;
   currentIndex = idx;
-  saveProgress();
   renderQuestion();
 }
 
