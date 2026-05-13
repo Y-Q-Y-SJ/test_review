@@ -28,6 +28,16 @@ function parseHtmlFile(filePath) {
       continue;
     }
 
+    // 先提取正确答案文本（权威来源）
+    const answerMatch = block.match(/正确答案：([A-Z对错]+)/);
+    let correctAnswer = answerMatch ? answerMatch[1].trim() : '';
+
+    // 判断题特殊处理：对→A，错→B
+    if (type === '判断题') {
+      if (correctAnswer === '对') correctAnswer = 'A';
+      else if (correctAnswer === '错') correctAnswer = 'B';
+    }
+
     const optionClass = (type === '单选题' || type === '判断题') ? 'exam_result2' : 'exam_result_box2';
     const optionBlock = block.match(new RegExp(`<div class="${optionClass}">([\\s\\S]*?)</div>`));
     if (!optionBlock) continue;
@@ -37,22 +47,21 @@ function parseHtmlFile(filePath) {
     let liMatch;
     while ((liMatch = liRegex.exec(optionBlock[1])) !== null) {
       options.push({
-        text: liMatch[1].replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim(),
-        correct: liMatch[0].includes('result_cut')
+        text: liMatch[1].replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()
       });
     }
-
-    const answerMatch = block.match(/正确答案：([A-Z对错]+)/);
-    const correctAnswer = answerMatch ? answerMatch[1].trim() : '';
 
     questions.push({
       type,
       stem,
-      options: options.map((opt, idx) => ({
-        letter: String.fromCharCode(65 + idx),
-        text: opt.text,
-        correct: opt.correct
-      })),
+      options: options.map((opt, idx) => {
+        const letter = String.fromCharCode(65 + idx);
+        return {
+          letter,
+          text: opt.text,
+          correct: correctAnswer.includes(letter)
+        };
+      }),
       correctAnswer
     });
   }
@@ -76,10 +85,14 @@ function deduplicate(questions) {
 }
 
 /**
- * Assign sequential IDs starting from startId.
+ * Assign sequential IDs, preserving existing IDs and assigning new ones after the max.
  */
-function assignIds(questions, startId = 1) {
-  questions.forEach((q, i) => { q.id = startId + i; });
+function assignIds(questions) {
+  const maxId = questions.reduce((max, q) => q.id > max ? q.id : max, 0);
+  let nextId = maxId + 1;
+  questions.forEach(q => {
+    if (q.id == null || q.id === 0) q.id = nextId++;
+  });
   return questions;
 }
 

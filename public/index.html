@@ -126,6 +126,21 @@ body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica 
 .search-count { text-align: center; color: #999; font-size: 13px; padding: 8px 0; }
 
 .loading { text-align: center; padding: 80px 20px; color: #999; font-size: 16px; }
+
+/* ===== Upload ===== */
+.upload-zone { border: 2px dashed #ccc; border-radius: 12px; padding: 24px 16px; text-align: center; margin: 16px 0; cursor: pointer; transition: all .2s; background: #fafafa; }
+.upload-zone:hover, .upload-zone.dragover { border-color: #4a90d9; background: #eef4fd; }
+.upload-zone .upload-icon { font-size: 36px; margin-bottom: 8px; color: #bbb; }
+.upload-zone .upload-text { font-size: 14px; color: #999; line-height: 1.6; }
+.upload-zone .upload-text strong { color: #4a90d9; }
+.upload-result { padding: 12px 16px; border-radius: 10px; margin: 12px 0; font-size: 14px; line-height: 1.8; }
+.upload-result.success { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+.upload-result.error { background: #fdecea; color: #c62828; border: 1px solid #ef9a9a; }
+.upload-progress { text-align: center; padding: 16px; color: #4a90d9; font-size: 14px; }
+.sync-confirm { display: flex; gap: 8px; margin-top: 12px; }
+.sync-confirm button { flex: 1; padding: 12px; font-size: 15px; border: none; border-radius: 10px; cursor: pointer; font-weight: 500; }
+.btn-sync-yes { background: #4a90d9; color: #fff; }
+.btn-sync-no { background: #e0e0e0; color: #555; }
 </style>
 </head>
 <body>
@@ -213,7 +228,7 @@ async function syncStar(add = [], remove = []) {
 }
 
 async function loadAttemptCounts() {
-  const data = await api('/api/attempts?t=' + Date.now());
+  const data = await api('/api/attempts');
   const serverCounts = data.attemptCounts || {};
   // Merge: keep the higher count from local or server
   for (const id in serverCounts) {
@@ -313,11 +328,18 @@ async function showMenu() {
         <button class="btn-fill" onclick="navQuiz('fill')">填空题专练</button>
         <button class="btn-fill-wrong" onclick="navQuiz('fillWrong')" ${fillWrongIds.size === 0 ? 'disabled' : ''}>填空错题 (${fillWrongIds.size})</button>
         <button class="btn-search" onclick="navigate(() => showSearch())">搜索题目</button>
+        <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+          <div class="upload-icon">+</div>
+          <div class="upload-text">拖入 HTML 文件更新题库<br><strong>点击选择</strong> 或直接拖入</div>
+        </div>
+        <input type="file" id="fileInput" accept=".html" multiple style="display:none" onchange="handleFileSelect(this.files)">
+        <div id="uploadResult"></div>
         ${wrongIds.size > 0 ? '<button class="btn-clear" id="btnClear" onclick="clearWrong()">清空错题库</button>' : ''}
         ${fillWrongIds.size > 0 ? '<button class="btn-clear" id="btnClearFill" onclick="clearFillWrong()" style="background:#e67e22">清空填空错题</button>' : ''}
         <button class="btn-logout" onclick="showLogin()">切换暗号</button>
       </div>
     `;
+    initUploadZone();
   } catch {
     showLogin();
   }
@@ -655,6 +677,7 @@ function clearFillWrong() {
 
 // ===== Search =====
 function showSearch() {
+  mode = 'search';
   const app = document.getElementById('app');
   app.innerHTML = `
     <div class="search-page">
@@ -716,6 +739,71 @@ function openSearchQuestion(idx) {
     stats = { total: 0, correct: 0 };
     renderQuestion();
   });
+}
+
+// ===== Upload =====
+function initUploadZone() {
+  const zone = document.getElementById('uploadZone');
+  if (!zone) return;
+
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('dragover');
+    const files = [...e.dataTransfer.files].filter(f => f.name.endsWith('.html'));
+    if (files.length) handleFileSelect(files);
+  });
+}
+
+async function handleFileSelect(files) {
+  if (!files || !files.length) return;
+  const resultEl = document.getElementById('uploadResult');
+  resultEl.innerHTML = '<div class="upload-progress">正在上传并解析...</div>';
+
+  const formData = new FormData();
+  for (const f of files) formData.append('files', f);
+
+  try {
+    const res = await fetch('/api/import', {
+      method: 'POST',
+      headers: { 'x-code': encodeURIComponent(code) },
+      body: formData
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      resultEl.innerHTML = `<div class="upload-result error">${data.error}</div>`;
+      return;
+    }
+
+    let html = `<div class="upload-result success">导入完成！新增 <strong>${data.added}</strong> 题，跳过重复 ${data.skipped} 题，当前共 ${data.questionCount} 题</div>`;
+    html += `<div class="sync-confirm">
+      <button class="btn-sync-yes" onclick="doSync()">同步到服务器</button>
+      <button class="btn-sync-no" onclick="document.getElementById('uploadResult').innerHTML=''">暂不同步</button>
+    </div>`;
+    resultEl.innerHTML = html;
+
+    // Reload questions cache from server
+    questions = await api('/api/questions');
+  } catch (err) {
+    resultEl.innerHTML = `<div class="upload-result error">上传失败: ${err.message}</div>`;
+  }
+}
+
+async function doSync() {
+  const resultEl = document.getElementById('uploadResult');
+  resultEl.innerHTML = '<div class="upload-progress">正在同步到服务器...</div>';
+  try {
+    const data = await api('/api/sync', { method: 'POST' });
+    if (data.success) {
+      resultEl.innerHTML = `<div class="upload-result success">${data.message}（${data.questionCount} 题）</div>`;
+    } else {
+      resultEl.innerHTML = `<div class="upload-result error">同步失败: ${data.error}</div>`;
+    }
+  } catch (err) {
+    resultEl.innerHTML = `<div class="upload-result error">同步失败: ${err.message}</div>`;
+  }
 }
 
 // ===== Init =====

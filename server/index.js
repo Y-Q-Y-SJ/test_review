@@ -2,21 +2,61 @@ const express = require('express');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const multer = require('multer');
+const { importHtmlFiles } = require('../scripts/upload');
+const { syncToRemote } = require('../scripts/sync_data');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const ROOT = path.join(__dirname, '..');
 const DATA_DIR = path.join(ROOT, 'data');
 const USERS_DIR = path.join(DATA_DIR, 'users');
+const SOURCE_DIR = path.join(DATA_DIR, 'source');
 const QUESTIONS_FILE = path.join(DATA_DIR, 'questions.json');
 
+// Multer config: save uploaded HTML files to data/source/
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, SOURCE_DIR),
+  filename: (req, file, cb) => {
+    // Decode original filename (handle Chinese characters)
+    const name = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    cb(null, name);
+  }
+});
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024, files: 20 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'text/html' || file.originalname.endsWith('.html')) {
+      cb(null, true);
+    } else {
+      cb(new Error('只支持 HTML 文件'), false);
+    }
+  }
+});
+
 if (!fs.existsSync(USERS_DIR)) fs.mkdirSync(USERS_DIR, { recursive: true });
+if (!fs.existsSync(SOURCE_DIR)) fs.mkdirSync(SOURCE_DIR, { recursive: true });
 
 app.use(express.json());
-app.use(express.static(path.join(ROOT, 'public')));
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+app.use(express.static(path.join(ROOT, 'public'), {
+  setHeaders: (res) => {
+    res.set('Cache-Control', 'no-store');
+  }
+}));
 
-// Cache questions at startup
-const questions = JSON.parse(fs.readFileSync(QUESTIONS_FILE, 'utf-8'));
+// Cache questions at startup (reloadable after import)
+let questions;
+try {
+  questions = JSON.parse(fs.readFileSync(QUESTIONS_FILE, 'utf-8'));
+} catch {
+  questions = [];
+  console.error(`无法读取题库文件: ${QUESTIONS_FILE}，已使用空题库`);
+}
 
 // ===== Helpers =====
 function codeToHash(code) {
@@ -126,7 +166,6 @@ app.post('/api/fill-progress', requireAuth, (req, res) => {
 });
 
 app.get('/api/attempts', requireAuth, (req, res) => {
-  res.set('Cache-Control', 'no-store');
   const data = readUserData(req.userCode);
   res.json({ attemptCounts: data.attemptCounts || {} });
 });
@@ -154,6 +193,63 @@ app.get('/api/stats', requireAuth, (req, res) => {
     starCount: (data.starIds || []).length,
     fillWrongCount: (data.fillWrongIds || []).length
   });
+});
+
+// ===== Import & Sync =====
+
+app.post('/api/import', requireAuth, upload.array('files'), (req, res) => {
+  if (!req.files || !req.files.length) {
+    return res.status(400).json({ error: '请上传 HTML 文件' });
+  }
+
+  const filePaths = req.files.map(f => f.path);
+  try {
+    const result = importHtmlFiles(filePaths);
+    questions = result.questions;
+
+    res.json({
+      ok: true,
+      added: result.added,
+      skipped: result.skipped,
+      total: result.total,
+      questionCount: result.questionCount,
+      details: result.details
+    });
+  } catch (err) {
+    // Clean up uploaded files on error
+    for (const f of filePaths) {
+      try { fs.unlinkSync(f); } catch {}
+    }
+    res.status(500).json({ error: `导入失败: ${err.message}` });
+  }
+});
+
+let syncInProgress = false;
+app.post('/api/sync', requireAuth, async (req, res) => {
+  if (syncInProgress) return res.status(409).json({ error: '同步正在进行中，请稍后' });
+  syncInProgress = true;
+  try {
+    const result = await syncToRemote();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    syncInProgress = false;
+  }
+});
+
+// Multer error handler — return JSON instead of HTML
+app.use((err, req, res, next) => {
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({ error: '文件大小不能超过 10MB' });
+  }
+  if (err.code === 'LIMIT_FILE_COUNT') {
+    return res.status(400).json({ error: '一次最多上传 20 个文件' });
+  }
+  if (err.message === '只支持 HTML 文件') {
+    return res.status(400).json({ error: err.message });
+  }
+  res.status(500).json({ error: err.message || '上传失败' });
 });
 
 app.get('*', (req, res) => {

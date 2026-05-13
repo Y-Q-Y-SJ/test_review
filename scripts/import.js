@@ -1,10 +1,6 @@
-const fs = require('fs');
 const path = require('path');
-const { parseHtmlFile, deduplicate, assignIds, printStats } = require('./parse');
-
-const ROOT = path.join(__dirname, '..');
-const DATA_DIR = path.join(ROOT, 'data');
-const QUESTIONS_FILE = path.join(DATA_DIR, 'questions.json');
+const { importHtmlFiles } = require('./upload');
+const { printStats } = require('./parse');
 
 // CLI arguments: paths to HTML files to import
 const inputFiles = process.argv.slice(2);
@@ -20,54 +16,21 @@ if (!inputFiles.length) {
   process.exit(0);
 }
 
-// Load existing questions
-let existing = [];
-if (fs.existsSync(QUESTIONS_FILE)) {
-  existing = JSON.parse(fs.readFileSync(QUESTIONS_FILE, 'utf-8'));
-}
-const existingStems = new Set(existing.map(q => q.stem));
-console.log(`现有题库: ${existing.length} 题\n`);
+console.log(`准备导入 ${inputFiles.length} 个文件...\n`);
 
-let newTotal = 0;
-let newAdded = 0;
-let newDupSkipped = 0;
+const result = importHtmlFiles(inputFiles);
 
-for (const file of inputFiles) {
-  const fullPath = path.resolve(file);
-  if (!fs.existsSync(fullPath)) {
-    console.log(`  跳过: ${file} (文件不存在)`);
-    continue;
+// Print details
+for (const d of result.details) {
+  if (d.error) {
+    console.log(`  跳过: ${d.file} (${d.error})`);
+  } else {
+    console.log(`  ${d.file}: 解析 ${d.parsed} 题, 新增 ${d.added} 题, 重复跳过 ${d.skipped} 题`);
   }
-
-  const questions = parseHtmlFile(fullPath);
-  newTotal += questions.length;
-
-  let added = 0;
-  let skipped = 0;
-  for (const q of questions) {
-    if (existingStems.has(q.stem)) {
-      skipped++;
-    } else {
-      existingStems.add(q.stem);
-      existing.push(q);
-      added++;
-    }
-  }
-
-  const name = path.basename(file);
-  console.log(`  ${name}: 解析 ${questions.length} 题, 新增 ${added} 题, 重复跳过 ${skipped} 题`);
-  newAdded += added;
-  newDupSkipped += skipped;
 }
-
-// Re-assign sequential IDs
-assignIds(existing);
-
-// Write back
-fs.writeFileSync(QUESTIONS_FILE, JSON.stringify(existing, null, 2), 'utf-8');
 
 console.log(`\n${'='.repeat(40)}`);
-console.log(`本次导入: 解析 ${newTotal} 题, 新增 ${newAdded} 题, 重复跳过 ${newDupSkipped} 题`);
-printStats('更新后题库', existing);
-console.log(`\n已写入 ${QUESTIONS_FILE}`);
+console.log(`本次导入: 解析 ${result.total} 题, 新增 ${result.added} 题, 重复跳过 ${result.skipped} 题`);
+printStats('更新后题库', result.questions);
+console.log(`\n已写入 data/questions.json`);
 console.log('重启服务后生效 (npm start)');
