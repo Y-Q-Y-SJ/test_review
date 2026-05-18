@@ -4,7 +4,11 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const { importHtmlFiles } = require('../scripts/upload');
-const { syncToRemote } = require('../scripts/sync_data');
+let syncToRemote = null;
+function getSyncToRemote() {
+  if (!syncToRemote) syncToRemote = require('../scripts/sync_data').syncToRemote;
+  return syncToRemote;
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -57,6 +61,56 @@ try {
   questions = [];
   console.error(`无法读取题库文件: ${QUESTIONS_FILE}，已使用空题库`);
 }
+
+// ===== Exam Papers =====
+let examPapers = [];
+function buildExamPapers() {
+  const { parseHtmlFile } = require('../scripts/parse');
+  try {
+    const srcDir = path.join(ROOT, 'data', 'source');
+    if (!fs.existsSync(srcDir)) return [];
+    const files = fs.readdirSync(srcDir)
+      .filter(f => f.endsWith('.html') && !f.includes('_files'))
+      .sort((a, b) => {
+        const na = parseInt(a.match(/(\d+)/)?.[1] || '0');
+        const nb = parseInt(b.match(/(\d+)/)?.[1] || '0');
+        return na - nb;
+      });
+
+    const stemToId = {};
+    questions.forEach(q => { stemToId[q.stem] = q.id; });
+
+    const papers = [];
+    let idx = 0;
+    for (const file of files) {
+      const filePath = path.join(srcDir, file);
+      try {
+        const parsed = parseHtmlFile(filePath);
+        const qIds = [];
+        const types = {};
+        for (const q of parsed) {
+          const id = stemToId[q.stem];
+          if (id != null) { qIds.push(id); types[q.type] = (types[q.type] || 0) + 1; }
+        }
+        if (qIds.length > 0) {
+          idx++;
+          papers.push({ name: `mock-${idx}`, displayName: `模拟卷 ${idx}`, questions: qIds, types });
+        }
+      } catch (e) {
+        console.error(`解析失败: ${file}`, e.message);
+      }
+    }
+
+    if (papers.length > 0) {
+      papers.push({ name: 'random', displayName: '随机组卷', questions: [], types: { ...papers[0].types } });
+    }
+    return papers;
+  } catch (e) {
+    console.error('构建模拟卷失败:', e.message);
+    return [];
+  }
+}
+examPapers = buildExamPapers();
 
 // ===== Helpers =====
 function codeToHash(code) {
@@ -135,6 +189,10 @@ app.post('/api/login', (req, res) => {
 
 app.get('/api/questions', requireAuth, (req, res) => {
   res.json(questions);
+});
+
+app.get('/api/exam-papers', requireAuth, (req, res) => {
+  res.json({ papers: examPapers });
 });
 
 idSetRoutes('/api/wrong', 'wrongIds', 'wrongCount');
@@ -229,7 +287,7 @@ app.post('/api/sync', requireAuth, async (req, res) => {
   if (syncInProgress) return res.status(409).json({ error: '同步正在进行中，请稍后' });
   syncInProgress = true;
   try {
-    const result = await syncToRemote();
+    const result = await getSyncToRemote()();
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
