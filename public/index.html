@@ -551,7 +551,7 @@ function checkAnswer() {
   }
 
   stats.total++;
-  if (isRight) { stats.correct++; syncWrong([], [q.id]); }
+  if (isRight) { stats.correct++; if (mode !== 'wrong') syncWrong([], [q.id]); }
   else { syncWrong([q.id], []); }
   recordAttempt(q.id);
   saveProgress();
@@ -575,14 +575,16 @@ function checkFillAnswer(userInput) {
   const input = document.getElementById('fillInput');
   input.disabled = true;
   const normalize = s => s.replace(/\s+/g, '').replace(/（/g, '(').replace(/）/g, ')');
-  const isRight = normalize(userInput) === normalize(q.correctAnswer);
+  const answers = q.correctAnswer.split('|').map(a => normalize(a));
+  const isRight = answers.includes(normalize(userInput));
 
   stats.total++;
   if (isRight) { stats.correct++; input.classList.add('correct'); }
   else { input.classList.add('wrong'); }
 
   if (mode === 'fill' || mode === 'fillWrong') {
-    if (isRight) syncFillWrong([], [q.id]); else syncFillWrong([q.id], []);
+    if (isRight) { if (mode !== 'fillWrong') syncFillWrong([], [q.id]); }
+    else syncFillWrong([q.id], []);
   } else {
     if (isRight) syncWrong([], [q.id]); else syncWrong([q.id], []);
   }
@@ -591,7 +593,7 @@ function checkFillAnswer(userInput) {
 
   const fb = document.getElementById('feedback');
   if (isRight) { fb.className = 'feedback show correct'; fb.textContent = '回答正确！'; }
-  else { fb.className = 'feedback show wrong'; fb.innerHTML = `回答错误！正确答案：${q.correctAnswer}`; }
+  else { fb.className = 'feedback show wrong'; fb.innerHTML = `回答错误！正确答案：${q.correctAnswer.split('|').join(' 或 ')}`; }
 
   hideConfirmShowActions();
 }
